@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sailite</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0077be; /* Ocean blue */ }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Load Data Files -->
+    <script src="js/data/upgrades.js"></script>
+    <script src="js/data/vessels.js"></script>
+    <script src="js/data/routes.js"></script>
+
+    <!-- Load Screen Logic -->
+    <script src="js/screens/vesselSelection.js"></script>
+    <script src="js/screens/port.js"></script>
+    <script src="js/screens/mission.js"></script>
+
+    <!-- Load Main Game Logic -->
+    <script src="js/game.js"></script>
+</body>
+</html>
