@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balatro Clone</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Gameplay Screen -->
+        <div id="gameplay-screen" class="screen active">
+            <h2>Gameplay</h2>
+            <div id="game-info">
+                <div>Ante: <span id="current-ante">1</span></div>
+                <div>Round: <span id="current-round">1</span> / 3</div>
+                <div id="blind-info">
+                    <h3>Small Blind</h3>
+                    <div>Target: <span id="target-score">100</span></div>
+                    <div>Reward: $<span id="blind-reward">4</span></div>
+                    <div id="blind-effect" style="display: none; color: #e74c3c; font-weight: bold; margin-top: 5px;"></div> <!-- Added for boss effect -->
+                </div>
+                <div>Score: <span id="current-score">0</span></div>
+                <div>Hands: <span id="hands-left">4 / 4</span></div>
+                <div>Discards: <span id="discards-left">3 / 3</span></div>
+                <div>Money: $<span id="player-money">10</span></div>
+            </div>
+
+            <div id="joker-consumable-area">
+                <div id="joker-slots">Jokers: [Slot 1] [Slot 2] [Slot 3] [Slot 4] [Slot 5]</div>
+                <div id="consumable-slots">Consumables: [Slot 1] [Slot 2]</div>
+            </div>
+
+            <div id="hand-area">
+                <!-- Cards will be rendered here by script.js -->
+            </div>
+
+            <div id="hand-info">
+                <span id="potential-hand-display">Selected Hand: ---</span>
+                <br>
+                Last Hand: <span id="last-hand">---</span>
+            </div>
+
+            <div id="action-buttons">
+                <button id="play-hand-btn" disabled>Play Hand</button>
+                <button id="discard-btn" disabled>Discard Selected</button>
+            </div>
+
+            <div id="utility-buttons">
+                <button id="sort-rank-btn">Sort by Rank</button>
+                <button id="sort-suit-btn">Sort by Suit</button>
+                <button id="run-info-btn">Run Info</button>
+                <button id="options-btn">Options</button>
+                <span>Deck: <span id="deck-count">52 / 52</span></span>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen">
+            <h2>Shop</h2>
+            <div id="shop-info">
+                <div>Money: $<span id="shop-player-money">10</span></div>
+                <div>Ante: <span id="current-ante-shop">1</span></div> <!-- Might be useful -->
+            </div>
+
+            <div id="shop-items">
+                <div id="shop-jokers-consumables" class="shop-category">
+                    <h4>Jokers / Consumables</h4>
+                    <div class="shop-slot">[Shop Slot 1]</div>
+                    <div class="shop-slot">[Shop Slot 2]</div>
+                    <!-- Add more slots if needed, maybe separate consumables? -->
+                </div>
+                <div id="shop-vouchers" class="shop-category">
+                    <h4>Vouchers</h4>
+                    <div id="voucher-slot" class="shop-slot">[Voucher Slot]</div>
+                </div>
+                <div id="shop-pack-area" class="shop-category">
+                    <h4>Packs</h4>
+                    <div class="shop-slot">[Pack Slot 1]</div>
+                    <div class="shop-slot">[Pack Slot 2]</div>
+                </div>
+            </div>
+
+            <div id="shop-actions">
+                <div id="reroll-area">
+                    <button id="reroll-btn">Reroll ($<span id="reroll-cost">1</span>)</button>
+                </div>
+                <button id="next-round-btn">Start Next Round</button>
+            </div>
+        </div>
+
+        <!-- Run Info Screen -->
+        <div id="run-info-screen" class="screen">
+            <h3>Run Information</h3>
+             <div id="run-info-details">
+                <div id="hand-levels-display">
+                    <h4>Hand Levels:</h4>
+                    <!-- Populated by JS -->
+                </div>
+                <div id="purchased-vouchers-display">
+                    <h4>Purchased Vouchers:</h4>
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            <button id="back-to-game-btn-runinfo">Back to Game</button>
+        </div>
+
+        <!-- Options Screen -->
+        <div id="options-screen" class="screen">
+            <h3>Options</h3>
+            <p>Game options would go here (e.g., volume, speed).</p>
+            <button id="back-to-game-btn-options">Back to Game</button>
+        </div>
+
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
