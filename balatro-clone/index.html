@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balatro Clone</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Add SortableJS library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 </head>
 <body>
+    <div id="custom-tooltip" class="tooltip" style="position: absolute; display: none; background-color: #333; color: white; padding: 5px 10px; border-radius: 4px; z-index: 1000; pointer-events: none; white-space: pre-wrap; max-width: 250px;"></div>
     <div id="game-container">
         <!-- Gameplay Screen -->
         <div id="gameplay-screen" class="screen active">
@@ -112,7 +115,21 @@
             <button id="back-to-game-btn-options">Back to Game</button>
         </div>
 
+        <!-- Cash Out Screen -->
+        <div id="cash-out-screen" class="screen">
+            <h2>Round Won!</h2>
+            <div id="cash-out-details">
+                <p>Blind Reward: $<span id="cash-out-blind">0</span></p>
+                <p>Interest (Max $5): $<span id="cash-out-interest">0</span></p>
+                <p>Hands Remaining Bonus: $<span id="cash-out-hands">0</span></p>
+                <hr>
+                <p><strong>Total Winnings: $<span id="cash-out-total">0</span></strong></p>
+                <p>New Balance: $<span id="cash-out-balance">0</span></p>
+            </div>
+            <button id="continue-to-shop-btn">Continue to Shop</button>
+        </div>
+
     </div>
-    <script src="script.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
