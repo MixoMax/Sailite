@@ -1,5 +1,5 @@
 import { RANK_ORDER, BASE_HAND_SCORES, MAX_SELECT } from './constants.js';
-import { state, setSelectedCards, setHand } from './state.js';
+import { state, setSelectedCards, setHand, setDeck, setDiscardPile } from './state.js'; // Added setDeck, setDiscardPile
 import { updateActionButtons, updatePotentialHandDisplay, renderHand } from './ui.js';
 import { drawCards } from './deck.js';
 import { updateDeckCount } from './ui.js'; // Needed for dealInitialHand
@@ -133,8 +133,9 @@ export function evaluatePokerHand(cards) {
  * @param {object} cardData - The data object of the card clicked.
  */
 export function toggleCardSelection(cardElement, cardData) {
-    if (state.isAnimating || state.isSelectingTarotTarget) {
-        console.log("Cannot select card during animation or targeting.");
+    // Allow selection during targeting, but not during animation
+    if (state.isAnimating) {
+        console.log("Cannot select card during animation.");
         return;
     }
 
@@ -162,10 +163,15 @@ export function toggleCardSelection(cardElement, cardData) {
 
 /**
  * Deals the initial hand of cards at the start of a round.
+ * Updates the deck and hand state.
  */
 export function dealInitialHand() {
-    const newHand = drawCards(state.currentHandSize);
-    setHand(newHand);
-    renderHand(false, newHand.map(c => c.id)); // Pass IDs of new cards for animation
-    updateDeckCount();
+    const drawResult = drawCards(state.currentHandSize);
+    // Note: drawCards now returns an object { drawnCards, remainingDeck, remainingDiscard }
+    // We need to update the global deck/discard state here.
+    setDeck(drawResult.remainingDeck);
+    setDiscardPile(drawResult.remainingDiscard);
+    setHand(drawResult.drawnCards); // Update the hand state
+    renderHand(false, drawResult.drawnCards.map(c => c.id)); // Pass IDs of new cards for animation
+    updateDeckCount(); // Update UI for deck count
 }

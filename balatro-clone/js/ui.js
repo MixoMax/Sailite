@@ -1,6 +1,9 @@
 import * as dom from './domElements.js';
 // Import setHand, setActiveJokers, and setIsAnimating
-import { state, setSelectedCards, setIsAnimating, setHand, setActiveJokers } from './state.js';
+import {
+    state, setSelectedCards, setIsAnimating, setHand, setActiveJokers,
+    setPlayerMoney, setActiveConsumables, generateUniqueId, setDeck, setDiscardPile // Added state setters
+} from './state.js';
 import {
     MAX_JOKERS, MAX_CONSUMABLES, JOKER_SELL_PRICE, BASE_HAND_SCORES,
     ANIMATION_DURATION, BASE_DISCARDS, VOUCHER_POOL, RANK_ORDER, RANKS_TO_HUMAN
@@ -8,8 +11,13 @@ import {
 
 // Import functions from other modules
 import { toggleCardSelection, evaluatePokerHand } from './hand.js';
-import { applyTarotEffectToTarget, useConsumable, cancelTarotTargeting } from './items.js';
-import { sellJoker } from './shop.js';
+import {
+    applyTarotEffectToTarget, useConsumable, cancelTarotTargeting,
+    getRandomPlanetCard, usePlanetCard, getRandomTarotCard, addConsumable,
+    addCardsToHandOrDiscard // Added item functions
+} from './items.js';
+import { sellJoker, getRandomJoker } from './shop.js'; // Added getRandomJoker
+import { drawCards } from './deck.js'; // Import drawCards from deck.js
 import { getCardChipValue } from './scoring.js';
 
 // --- Tooltip Globals ---
@@ -447,6 +455,450 @@ export function showCashOutScreen(blindReward, interest, handsBonus, totalWinnin
     showScreen(dom.cashOutScreen);
 }
 
+// --- Pack Opening Screen ---
+/**
+ * Displays a modal UI for opening a pack, handling item selection and joker selling.
+ * @param {object} pack - The pack definition object being opened.
+ * @returns {Promise<void>} A promise that resolves when the pack opening is complete.
+ */
+export async function showPackOpeningScreen(pack) {
+    return new Promise(async (resolve, reject) => {
+        setIsAnimating(true); // Prevent other actions during pack opening
+
+        // --- Create Overlay Elements ---
+        const overlay = document.createElement('div');
+        overlay.id = 'pack-opening-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '1000';
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.3s ease-in-out';
+
+        const contentBox = document.createElement('div');
+        contentBox.style.backgroundColor = '#222';
+        contentBox.style.padding = '20px';
+        contentBox.style.border = '2px solid #555';
+        contentBox.style.borderRadius = '8px';
+        contentBox.style.maxWidth = '80%';
+        contentBox.style.maxHeight = '80%';
+        contentBox.style.overflowY = 'auto';
+        contentBox.style.textAlign = 'center';
+
+        const title = document.createElement('h2');
+        title.textContent = `Opening: ${pack.name}`;
+        title.style.marginBottom = '15px';
+
+        const instructions = document.createElement('p');
+        instructions.style.marginBottom = '15px';
+        instructions.style.minHeight = '1.2em'; // Prevent layout shift
+
+        const itemsArea = document.createElement('div');
+        itemsArea.style.display = 'flex';
+        itemsArea.style.flexWrap = 'wrap';
+        itemsArea.style.justifyContent = 'center';
+        itemsArea.style.gap = '10px';
+        itemsArea.style.marginBottom = '20px';
+        itemsArea.style.minHeight = '80px'; // Placeholder height
+
+        const jokerSellArea = document.createElement('div');
+        jokerSellArea.style.marginTop = '20px';
+        jokerSellArea.style.borderTop = '1px solid #444';
+        jokerSellArea.style.paddingTop = '15px';
+
+        const moneyDisplay = document.createElement('p');
+        moneyDisplay.style.marginTop = '10px';
+        moneyDisplay.textContent = `Money: $${state.playerMoney}`;
+
+        const confirmButton = document.createElement('button');
+        confirmButton.textContent = 'Done';
+        confirmButton.disabled = true; // Disabled until requirements met
+        confirmButton.style.marginTop = '15px';
+        confirmButton.style.padding = '10px 20px';
+
+        contentBox.appendChild(title);
+        contentBox.appendChild(instructions);
+        contentBox.appendChild(itemsArea);
+        contentBox.appendChild(jokerSellArea); // Add joker sell area
+        contentBox.appendChild(moneyDisplay); // Add money display
+        contentBox.appendChild(confirmButton);
+        overlay.appendChild(contentBox);
+        document.body.appendChild(overlay);
+
+        // Fade in overlay
+        await delay(10); // Allow element to be added to DOM
+        overlay.style.opacity = '1';
+
+        // --- State Variables for Pack Opening ---
+        let revealedItems = []; // Cards or Jokers revealed
+        let selectedItems = []; // Items chosen by the player
+        const picksNeeded = pack.picks || 0; // How many items to pick (0 means take all/apply all)
+        const showCount = pack.shows || pack.contains; // How many items to reveal initially
+
+        // --- Helper Functions for Pack UI ---
+        const updateInstructions = () => {
+            if (picksNeeded > 0) {
+                const remaining = picksNeeded - selectedItems.length;
+                if (remaining > 0) {
+                    instructions.textContent = `Select ${remaining} more item(s).`;
+                    confirmButton.disabled = true;
+                } else {
+                    instructions.textContent = `Selection complete.`;
+                    confirmButton.disabled = false;
+                }
+            } else {
+                // For packs where items are applied instantly or all are taken
+                instructions.textContent = pack.description;
+                confirmButton.disabled = false; // Can close immediately
+            }
+        };
+
+        const renderPackJokers = () => {
+            jokerSellArea.innerHTML = '<h4>Your Jokers (Click to Sell):</h4>';
+            const jokerList = document.createElement('div');
+            jokerList.style.display = 'flex';
+            jokerList.style.flexWrap = 'wrap';
+            jokerList.style.gap = '5px';
+            jokerList.style.justifyContent = 'center';
+
+            let hasJokers = false;
+            state.activeJokers.forEach((joker, index) => {
+                if (joker) {
+                    hasJokers = true;
+                    const jokerSpan = document.createElement('span');
+                    jokerSpan.classList.add('joker-slot-display', 'sellable'); // Use existing styles
+                    jokerSpan.style.cursor = 'pointer';
+                    jokerSpan.style.margin = '0 5px';
+                    let displayText = `[${joker.name}`;
+                     if (joker.hasOwnProperty("currentValue")) {
+                        displayText += ` (+${joker.currentValue})`;
+                    }
+                    displayText += "]";
+                    jokerSpan.textContent = displayText;
+
+                    const tooltipText = `<strong>${joker.name}</strong>\n${joker.description}\n\n<em>Click to sell for $${JOKER_SELL_PRICE}</em>`;
+                    jokerSpan.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, jokerSpan));
+                    jokerSpan.addEventListener("mouseout", hideTooltip); // Ensure tooltip hides
+
+                    jokerSpan.onclick = () => {
+                        if (sellJoker(index, true)) { // Pass true flag
+                            // Re-render jokers and update money display within the overlay
+                            renderPackJokers();
+                            moneyDisplay.textContent = `Money: $${state.playerMoney}`;
+                            // Re-evaluate if Buffoon pack jokers can now be added
+                            if (pack.type === 'joker') {
+                                updateBuffoonSelection();
+                            }
+                        }
+                    };
+                    jokerList.appendChild(jokerSpan);
+                }
+            });
+             if (!hasJokers) {
+                jokerSellArea.innerHTML += '<p>No active Jokers.</p>';
+            } else {
+                 jokerSellArea.appendChild(jokerList);
+            }
+        };
+
+        // Function to handle selection logic for revealed items
+        const handleItemSelection = (item, itemElement) => {
+            if (picksNeeded <= 0) return; // No selection needed
+
+            const isSelected = selectedItems.some(sel => sel.id === item.id);
+
+            if (isSelected) {
+                // Deselect
+                selectedItems = selectedItems.filter(sel => sel.id !== item.id);
+                itemElement.classList.remove('selected');
+            } else {
+                // Select, if picks remaining
+                if (selectedItems.length < picksNeeded) {
+                    selectedItems.push(item);
+                    itemElement.classList.add('selected');
+                } else {
+                    // Maybe flash an error or provide feedback?
+                    console.log("Maximum picks reached.");
+                    // Simple alert for now
+                    alert(`You can only select ${picksNeeded} item(s).`);
+                }
+            }
+            updateInstructions();
+        };
+
+        // Function to update Buffoon pack selection state (handles joker slot limits)
+        const updateBuffoonSelection = () => {
+            const availableSlots = MAX_JOKERS - state.activeJokers.filter(j => j !== null).length;
+            const jokersToAdd = selectedItems.length; // Jokers selected from the pack
+
+            if (jokersToAdd > availableSlots) {
+                instructions.textContent = `Not enough Joker slots! Sell ${jokersToAdd - availableSlots} active Joker(s) to make space.`;
+                confirmButton.disabled = true;
+            } else {
+                // Enough slots, update instructions based on picks needed
+                updateInstructions();
+            }
+        };
+
+
+        // --- Pack Type Specific Logic ---
+        try {
+            if (pack.type === 'planet') {
+                // Planets apply instantly
+                instructions.textContent = 'Applying Planet effects...';
+                confirmButton.disabled = true; // Disable until effects applied
+                for (let i = 0; i < pack.contains; i++) {
+                    const planetCard = getRandomPlanetCard();
+                    if (planetCard) {
+                        revealedItems.push(planetCard);
+                        // Render Planet card visually (simpler than playing card)
+                        const planetElement = document.createElement('div');
+                        planetElement.classList.add('card', 'planet-style'); // Add a style for planets
+                        planetElement.textContent = planetCard.name;
+                        planetElement.style.opacity = '0'; // Start hidden for animation
+                        itemsArea.appendChild(planetElement);
+
+                        const tooltipText = `<strong>${planetCard.name}</strong>\n${planetCard.description}`;
+                        planetElement.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, planetElement));
+                        planetElement.addEventListener("mouseout", hideTooltip);
+
+                        await delay(100); // Stagger appearance
+                        planetElement.style.transition = 'opacity 0.3s';
+                        planetElement.style.opacity = '1';
+                        usePlanetCard(planetCard); // Apply effect
+                        await delay(ANIMATION_DURATION / 2); // Wait briefly after each application
+                    }
+                }
+                instructions.textContent = 'Planet effects applied!';
+                confirmButton.disabled = false;
+
+            } else if (pack.type === 'tarot') {
+                // Tarots are added to consumables (or applied if no space?) - Let's add to consumables first.
+                // If it's pick X of Y, we need selection. If not, add all.
+                instructions.textContent = 'Revealing Tarot cards...';
+                 confirmButton.disabled = true;
+
+                for (let i = 0; i < showCount; i++) {
+                    const tarotCard = getRandomTarotCard();
+                    if (tarotCard) {
+                        // Assign a temporary ID for selection purposes if it doesn't have one
+                        if (!tarotCard.id) tarotCard.id = generateUniqueId('temp-tarot-');
+                        revealedItems.push(tarotCard);
+                        // Render Tarot card visually (similar to renderCard or simpler)
+                        const tarotElement = document.createElement('div');
+                        tarotElement.classList.add('card', 'tarot-style'); // Add a style for tarots
+                        tarotElement.textContent = tarotCard.name;
+                        tarotElement.style.opacity = '0';
+                        tarotElement.style.cursor = picksNeeded > 0 ? 'pointer' : 'default';
+                        itemsArea.appendChild(tarotElement);
+
+                        const tooltipText = `<strong>${tarotCard.name}</strong>\n${tarotCard.description}`;
+                        tarotElement.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, tarotElement));
+                        tarotElement.addEventListener("mouseout", hideTooltip);
+
+                        if (picksNeeded > 0) {
+                            tarotElement.onclick = () => handleItemSelection(tarotCard, tarotElement);
+                        }
+
+                        await delay(100);
+                        tarotElement.style.transition = 'opacity 0.3s';
+                        tarotElement.style.opacity = '1';
+                    }
+                }
+
+                if (picksNeeded === 0) { // Add all revealed Tarots
+                    selectedItems = revealedItems;
+                    let addedCount = 0;
+                    let failedCount = 0;
+                    selectedItems.forEach(tarot => {
+                        if (addConsumable(tarot)) {
+                            addedCount++;
+                        } else {
+                            failedCount++;
+                        }
+                    });
+                    instructions.textContent = `Added ${addedCount} Tarot(s). ${failedCount > 0 ? `${failedCount} lost (slots full).` : ''}`;
+                    confirmButton.disabled = false;
+                    renderConsumables(); // Update main UI consumable display
+                } else {
+                    // Wait for user selection
+                    updateInstructions(); // Set initial instruction for selection
+                }
+
+
+            } else if (pack.type === 'standard') {
+                // Reveal cards, allow pick X of Y
+                instructions.textContent = 'Drawing cards...';
+                confirmButton.disabled = true;
+
+                const { drawnCards, remainingDeck, remainingDiscard } = drawCards(showCount);
+                setDeck(remainingDeck); // Update deck state
+                setDiscardPile(remainingDiscard); // Update discard state
+
+                revealedItems = drawnCards;
+
+                if (!Array.isArray(revealedItems)) { // Add check here
+                    console.error("drawCards did not return a valid drawnCards array:", revealedItems);
+                    revealedItems = []; // Ensure it's an array
+                    instructions.textContent = 'Error drawing cards!';
+                    confirmButton.disabled = false;
+                } else if (revealedItems.length === 0) {
+                     instructions.textContent = 'Deck is empty!';
+                     confirmButton.disabled = false;
+                } else {
+                    revealedItems.forEach(async (card, index) => {
+                        const cardElement = renderCard(card); // Use standard renderCard
+                        cardElement.style.opacity = '0';
+                        cardElement.style.cursor = 'pointer';
+                        cardElement.onclick = () => handleItemSelection(card, cardElement);
+                        itemsArea.appendChild(cardElement);
+                        await delay(100 * (index + 1));
+                        cardElement.style.transition = 'opacity 0.3s';
+                        cardElement.style.opacity = '1';
+                    });
+
+                    await delay(100 * revealedItems.length + 100); // Wait for animations
+                    updateInstructions(); // Set instruction for selection
+                }
+                 updateDeckCount(); // Update main UI deck count
+
+            } else if (pack.type === 'joker') { // Buffoon Pack
+                instructions.textContent = 'Revealing Jokers...';
+                confirmButton.disabled = true;
+                renderPackJokers(); // Show current jokers for selling
+
+                for (let i = 0; i < showCount; i++) {
+                    const joker = getRandomJoker();
+                    if (joker) {
+                        // Assign a temporary ID for selection purposes if it doesn't have one
+                        if (!joker.id) joker.id = generateUniqueId('temp-joker-');
+                        revealedItems.push(joker);
+
+                        const jokerElement = document.createElement('div');
+                        jokerElement.classList.add('joker-slot-display'); // Use existing styles
+                        jokerElement.style.cursor = picksNeeded > 0 ? 'pointer' : 'default';
+                        jokerElement.style.opacity = '0';
+                        let displayText = `[${joker.name}]`;
+                        jokerElement.textContent = displayText;
+
+                        const tooltipText = `<strong>${joker.name}</strong>\n${joker.description}`;
+                        jokerElement.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, jokerElement));
+                        jokerElement.addEventListener("mouseout", hideTooltip);
+
+                        if (picksNeeded > 0) {
+                            jokerElement.onclick = () => {
+                                handleItemSelection(joker, jokerElement);
+                                updateBuffoonSelection(); // Check slot availability after selection change
+                            };
+                        } else {
+                             // If picksNeeded is 0 (or undefined), auto-select
+                             selectedItems.push(joker);
+                             jokerElement.classList.add('selected'); // Visually indicate auto-selection
+                        }
+
+                        itemsArea.appendChild(jokerElement);
+                        await delay(100);
+                        jokerElement.style.transition = 'opacity 0.3s';
+                        jokerElement.style.opacity = '1';
+                    }
+                }
+                 // Ensure revealedItems is an array before accessing length
+                 const delayDuration = Array.isArray(revealedItems) ? revealedItems.length : 0;
+                 await delay(100 * delayDuration + 100); // Use the safe length
+
+                // Check if revealedItems is an array and if it's empty
+                if (!Array.isArray(revealedItems) || revealedItems.length === 0) {
+                    console.error("revealedItems is not a valid array or is empty after joker generation:", revealedItems); // Added console error
+                    instructions.textContent = 'No Jokers left in the pool (or error occurred)!'; // Modified message
+                    confirmButton.disabled = false;
+                } else {
+                    // Check initial slot availability
+                    updateBuffoonSelection();
+                }
+            }
+
+        } catch (error) {
+             console.error("Error generating pack contents:", error);
+             instructions.textContent = "Error opening pack!";
+             confirmButton.disabled = false; // Allow closing on error
+             // Potentially reject the promise here?
+             // reject(error); return; // Uncomment to make buyItem catch this
+        }
+
+
+        // --- Confirmation Logic ---
+        confirmButton.onclick = () => {
+            hideTooltip(); // Hide any lingering tooltips
+
+            // Process selected items based on pack type
+            if (pack.type === 'tarot' && picksNeeded > 0) {
+                let addedCount = 0;
+                let failedCount = 0;
+                selectedItems.forEach(tarot => {
+                    if (addConsumable(tarot)) {
+                        addedCount++;
+                    } else {
+                        failedCount++;
+                    }
+                });
+                console.log(`Added ${addedCount} selected Tarot(s). ${failedCount > 0 ? `${failedCount} lost.` : ''}`);
+                renderConsumables(); // Update main UI
+            }
+            else if (pack.type === 'standard') {
+                addCardsToHandOrDiscard(selectedItems); // Add selected cards
+                console.log(`Added ${selectedItems.length} card(s) to hand/discard.`);
+                renderHand(); // Update main UI hand display
+                updateDeckCount(); // Update main UI deck count
+            }
+            else if (pack.type === 'joker') {
+                const currentActiveJokers = [...state.activeJokers];
+                let jokersAddedCount = 0;
+                selectedItems.forEach(joker => {
+                    let added = false;
+                     // Find first empty slot (null)
+                    const emptySlotIndex = currentActiveJokers.findIndex(slot => slot === null);
+                    if (emptySlotIndex !== -1) {
+                         const jokerInstance = { ...joker };
+                         // Assign permanent unique ID
+                         jokerInstance.id = generateUniqueId('joker');
+                         if (jokerInstance.effect.type === "scaling_mult") {
+                            jokerInstance.currentValue = 0; // Initialize scaling
+                         }
+                         currentActiveJokers[emptySlotIndex] = jokerInstance;
+                         added = true;
+                         jokersAddedCount++;
+                         console.log(`Added Joker: ${jokerInstance.name} to slot ${emptySlotIndex}`);
+                    } else {
+                        // This case should ideally be prevented by the UI checks, but log if it happens
+                        console.warn(`Could not add Joker ${joker.name} - no empty slots found despite UI checks.`);
+                    }
+                });
+                if (jokersAddedCount > 0) {
+                    setActiveJokers(currentActiveJokers);
+                    renderJokers(); // Update main UI joker display
+                }
+            }
+
+            // --- Cleanup ---
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                setIsAnimating(false); // Re-enable actions
+                updateUI(); // Perform a final full UI update
+                resolve(); // Resolve the promise from buyItem
+            }, 300); // Match transition duration
+        };
+    });
+}
+
+
 /**
  * Renders a single card element.
  * @param {object} cardData - The card data object.
@@ -455,6 +907,16 @@ export function showCashOutScreen(blindReward, interest, handsBonus, totalWinnin
  * @returns {HTMLElement} The card's div element.
  */
 export function renderCard(cardData, isTargeting = false, isNewlyDrawn = false) {
+    // Basic validation
+    if (!cardData || typeof cardData.suit !== 'string' || typeof cardData.rank !== 'string' || typeof cardData.id !== 'string') {
+        console.error("Invalid cardData passed to renderCard:", cardData);
+        // Return a placeholder or throw an error
+        const errorDiv = document.createElement("div");
+        errorDiv.classList.add("card", "error-card");
+        errorDiv.textContent = "Error";
+        return errorDiv;
+    }
+
     const cardDiv = document.createElement("div");
     cardDiv.classList.add("card", cardData.suit);
     cardDiv.dataset.id = cardData.id;
@@ -512,9 +974,16 @@ export function renderCard(cardData, isTargeting = false, isNewlyDrawn = false) 
         cardDiv.onclick = () => applyTarotEffectToTarget(cardData);
     } else {
         // Ensure toggleCardSelection is imported and available
+        // Check if the card is part of the main hand area before adding toggle selection
+        // This prevents adding selection logic to cards shown in pack opening etc.
+        // We determine this by checking if the cardDiv's parent will be the handArea
+        // This check is implicitly handled by only calling renderHand for the main hand area
+        // and renderCard directly for pack opening. We only add the listener if not targeting.
         cardDiv.addEventListener("click", () => toggleCardSelection(cardDiv, cardData));
-        // Add tooltip listener
+
+        // Add tooltip listener regardless
         cardDiv.addEventListener("mouseover", (event) => showTooltip(tooltipContent, event, cardDiv));
+        cardDiv.addEventListener("mouseout", hideTooltip); // Hide tooltip on mouse out
     }
 
     // Apply draw animation class
@@ -601,7 +1070,11 @@ export function updatePotentialHandDisplay() {
  * Updates the deck count display.
  */
 export function updateDeckCount() {
-    dom.deckCountEl.textContent = `${state.deck.length} / ${state.deck.length + state.hand.length + state.discardPile.length}`;
+    // Ensure state properties are arrays before accessing length
+    const deckLength = Array.isArray(state.deck) ? state.deck.length : 0;
+    const handLength = Array.isArray(state.hand) ? state.hand.length : 0;
+    const discardLength = Array.isArray(state.discardPile) ? state.discardPile.length : 0;
+    dom.deckCountEl.textContent = `${deckLength} / ${deckLength + handLength + discardLength}`;
 }
 
 /**
@@ -636,6 +1109,7 @@ export function renderJokers() {
             slotSpan.dataset.jokerId = joker.id; // Assuming jokers have a unique 'id' property
             // Add tooltip listener
             slotSpan.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, slotSpan));
+            slotSpan.addEventListener("mouseout", hideTooltip); // Hide tooltip on mouse out
         } else {
             slotSpan.textContent = `[Empty Slot ${i + 1}]`;
             slotSpan.classList.add("empty");
@@ -667,6 +1141,7 @@ export function renderConsumables() {
             slotSpan.onclick = () => useConsumable(consumable, i);
             // Add tooltip listener
             slotSpan.addEventListener("mouseover", (event) => showTooltip(tooltipText, event, slotSpan));
+            slotSpan.addEventListener("mouseout", hideTooltip); // Hide tooltip on mouse out
             if (state.isSelectingTarotTarget && state.activeTarotEffect && state.activeTarotEffect.indexToRemove === i) {
                 slotSpan.classList.add("active-targeting");
                 isTargetingNow = true; // Set flag if we find an active targeting consumable

@@ -1,21 +1,67 @@
 import {
     PLANET_CARDS, TAROT_POOL, VOUCHER_POOL, BASE_HAND_SCORES, MAX_CONSUMABLES,
     PROB_EDITION_FOIL, PROB_EDITION_HOLO, PROB_EDITION_POLY, PROB_SEAL_ANY, SEALS,
-    BASE_HAND_SIZE, BASE_DISCARDS // Added BASE_HAND_SIZE and BASE_DISCARDS
+    BASE_HAND_SIZE, BASE_DISCARDS, // Added BASE_HAND_SIZE and BASE_DISCARDS
+    MAX_JOKERS
 } from './constants.js';
 import {
     state, incrementHandLevel, setActiveConsumables, setActiveTarotEffect,
     setIsSelectingTarotTarget, setPlayerMoney, setPurchasedVouchers,
-    setCurrentHandSize, setDiscardsLeft, setHand, setDiscardPile
+    setCurrentHandSize, setDiscardsLeft, setHand, setDiscardPile,
 } from './state.js';
 import {
     updateHandLevelDisplay, renderConsumables, renderHand, updateUI,
     updateActionButtons, updatePotentialHandDisplay, updatePurchasedVouchersDisplay,
     updateDeckCount // Needed for standard pack opening
-} from './ui.js';
-import { drawCards } from './deck.js'; // Needed for standard pack opening
-
-// --- Planet Card Logic ---
+ } from './ui.js';
+ // Removed drawCards import from here, it's used in ui.js now
+ 
+ // --- Helper: Add Cards to Hand or Discard ---
+ 
+ /**
+  * Adds an array of cards to the hand if space is available, otherwise adds to the discard pile.
+  * Handles Purple Seal effect on discard.
+  * @param {Array<object>} cardsToAdd - Array of card objects to add.
+  * @returns {{addedToHandIds: Array<string>, addedToDiscardIds: Array<string>, createdTarot: boolean}} - Info about added cards.
+  */
+ export function addCardsToHandOrDiscard(cardsToAdd) {
+     const currentHand = [...state.hand];
+     const currentDiscard = [...state.discardPile];
+     const addedToHandIds = [];
+     const addedToDiscardIds = [];
+     let createdTarot = false;
+ 
+     cardsToAdd.forEach(card => {
+         if (currentHand.length < state.currentHandSize) {
+             currentHand.push(card);
+             addedToHandIds.push(card.id);
+         } else {
+             console.log(`Hand full, discarding ${card.id}`);
+             addedToDiscardIds.push(card.id);
+             // Check for Purple Seal *before* adding to discard
+             if (card.seal === "purple") {
+                 console.log(`  ${card.id} (Purple Seal) triggered on discard!`);
+                 const newTarot = getRandomTarotCard();
+                 if (addConsumable(newTarot)) { // addConsumable updates state and UI
+                     console.log(`  Created Tarot: ${newTarot.name}`);
+                     createdTarot = true;
+                 } else {
+                     console.log(`  Could not create Tarot ${newTarot.name} (slots full).`);
+                 }
+                 card.seal = null; // Consume the seal
+             }
+             currentDiscard.push(card); // Add to discard pile
+         }
+     });
+ 
+     // Update state
+     setHand(currentHand);
+     setDiscardPile(currentDiscard);
+ 
+     return { addedToHandIds, addedToDiscardIds, createdTarot };
+ }
+ 
+ // --- Planet Card Logic ---
 
 /**
  * Applies the effect of a Planet card, leveling up the target hand type.
@@ -370,4 +416,16 @@ export function openStandardPack(pack) {
         // addConsumable already called renderConsumables, no need to call again
     }
     updateDeckCount(); // Update deck count display
+}
+
+
+
+export function canBuyJoker() {
+    let jokerCount = 0;
+    state.activeJokers.forEach(joker => {
+        if (joker != null) {
+            jokerCount++;
+        }
+    });
+    return jokerCount < MAX_JOKERS;
 }

@@ -36,39 +36,58 @@ export function shuffleDeck() {
 /**
  * Draws a specified number of cards from the deck.
  * Reshuffles the discard pile if the deck runs out.
+ * Updates the deck and discard pile states internally.
  * @param {number} numCards - The number of cards to draw.
- * @returns {Array<object>} An array of drawn card objects.
+ * @returns {{drawnCards: Array<object>, remainingDeck: Array<object>, remainingDiscard: Array<object>}} An object containing the drawn cards and the updated deck/discard piles.
  */
 export function drawCards(numCards) {
     const drawn = [];
     let currentDeck = [...state.deck];
     let currentDiscardPile = [...state.discardPile];
 
-    for (let i = 0; i < numCards && currentDeck.length > 0; i++) {
-        drawn.push(currentDeck.pop());
+    for (let i = 0; i < numCards; i++) { // Loop up to numCards requested
+        if (currentDeck.length === 0) {
+            // Deck is empty, check discard pile
+            if (currentDiscardPile.length === 0) {
+                // Both empty, cannot draw more cards
+                console.log("Deck and discard pile are empty. Cannot draw more cards.");
+                break; // Stop drawing
+            } else {
+                // Reshuffle discard pile into deck
+                console.log("Deck empty. Reshuffling discard pile.");
+                currentDeck = [...currentDiscardPile]; // Copy discard to deck
+                // Shuffle the new deck (Fisher-Yates)
+                for (let k = currentDeck.length - 1; k > 0; k--) {
+                    const j = Math.floor(Math.random() * (k + 1));
+                    [currentDeck[k], currentDeck[j]] = [currentDeck[j], currentDeck[k]];
+                }
+                currentDiscardPile = []; // Empty the discard pile
+
+                // Now try drawing the current card again from the reshuffled deck
+                if (currentDeck.length === 0) {
+                    // Should not happen if discard wasn't empty, but safety check
+                    console.log("Reshuffled deck is somehow still empty.");
+                    break;
+                }
+            }
+        }
+        // Draw the top card if available
+        const drawnCard = currentDeck.pop();
+        if (drawnCard) {
+            drawn.push(drawnCard);
+        } else {
+             // This case should ideally not be reached due to the length checks,
+             // but break just in case.
+             break;
+        }
     }
 
-    // Check if deck is empty and discard pile has cards
-    if (drawn.length < numCards && currentDiscardPile.length > 0) {
-        console.log("Deck empty, reshuffling discard pile...");
-        currentDeck = [...currentDiscardPile]; // Move discard pile to deck
-        currentDiscardPile = []; // Empty discard pile
-
-        // Shuffle the newly formed deck
-        for (let i = currentDeck.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [currentDeck[i], currentDeck[j]] = [currentDeck[j], currentDeck[i]];
-        }
-
-        // Draw remaining cards
-        for (let i = drawn.length; i < numCards && currentDeck.length > 0; i++) {
-            drawn.push(currentDeck.pop());
-        }
-    }
-
-    // Update the state
-    setDeck(currentDeck);
-    setDiscardPile(currentDiscardPile);
-
-    return drawn;
+    // Return the drawn cards and the final state of deck and discard
+    // Note: We are NOT updating the global state here anymore.
+    // The caller (e.g., showPackOpeningScreen) will handle state updates.
+    return {
+        drawnCards: drawn || [],
+        remainingDeck: currentDeck || [],
+        remainingDiscard: currentDiscardPile || []
+    };
 }

@@ -92,11 +92,15 @@ export async function playSelectedHand() { // Make function async
     const cardsToDrawCount = state.currentHandSize - state.hand.length;
     let newlyDrawnCards = [];
     if (cardsToDrawCount > 0) {
-        newlyDrawnCards = drawCards(cardsToDrawCount);
-        setHand([...state.hand, ...newlyDrawnCards]);
+        const drawResult = drawCards(cardsToDrawCount);
+        newlyDrawnCards = drawResult.drawnCards; // Extract the array
+        setDeck(drawResult.remainingDeck);       // Update deck state
+        setDiscardPile(drawResult.remainingDiscard); // Update discard state
+        setHand([...state.hand, ...newlyDrawnCards]); // Add only the drawn cards array
     }
 
     // --- Update UI (after drawing) ---
+    // Pass only the IDs of the newly drawn cards for animation targeting
     ui.renderHand(false, newlyDrawnCards.map(c => c.id));
     ui.updateUI();
 
@@ -171,10 +175,14 @@ export function discardSelectedCards() {
         const cardsToDrawCount = state.currentHandSize - state.hand.length;
         let newlyDrawnCards = [];
         if (cardsToDrawCount > 0) {
-            newlyDrawnCards = drawCards(cardsToDrawCount);
-            setHand([...state.hand, ...newlyDrawnCards]);
+            const drawResult = drawCards(cardsToDrawCount);
+            newlyDrawnCards = drawResult.drawnCards; // Extract the array
+            setDeck(drawResult.remainingDeck);       // Update deck state
+            setDiscardPile(drawResult.remainingDiscard); // Update discard state
+            setHand([...state.hand, ...newlyDrawnCards]); // Add only the drawn cards array
         }
 
+        // Pass only the IDs of the newly drawn cards for animation targeting
         ui.renderHand(false, newlyDrawnCards.map(c => c.id));
         if (createdTarot) {
             // ui.renderConsumables already called by addConsumable

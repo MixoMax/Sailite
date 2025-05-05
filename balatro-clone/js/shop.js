@@ -10,11 +10,11 @@ import {
 } from './constants.js';
 import {
     renderJokers, updateUI, renderConsumables, updatePurchasedVouchersDisplay,
-    renderHand, updateDeckCount, showTooltip // Needed for pack opening & tooltip
+    renderHand, updateDeckCount, showTooltip, showPackOpeningScreen // Needed for pack opening & tooltip
 } from './ui.js';
 import {
     getAvailableVoucher, applyVoucherEffects, usePlanetCard, getRandomPlanetCard,
-    addConsumable, getRandomTarotCard, openStandardPack, hasVoucher // Import item functions
+    addConsumable, getRandomTarotCard, openStandardPack, hasVoucher, canBuyJoker
 } from './items.js';
 
 /**
@@ -22,7 +22,10 @@ import {
  * @returns {object | null} A copy of a random available Joker object, or null if none are left.
  */
 export function getRandomJoker() {
-    const availableJokers = JOKER_POOL.filter(j => !state.activeJokers.some(aj => aj.id === j.id));
+    // Filter out jokers that are already active (checking for null in activeJokers)
+    const availableJokers = JOKER_POOL.filter(j =>
+        !state.activeJokers.some(aj => aj && aj.id === j.id) // Add null check for aj
+    );
     if (availableJokers.length === 0) return null;
     const randomIndex = Math.floor(Math.random() * availableJokers.length);
     return { ...availableJokers[randomIndex] }; // Return a copy
@@ -81,22 +84,27 @@ export function populateShop() {
  * @param {number} index - The index within its category (for jokers/packs, -1 for voucher).
  */
 function renderShopSlot(slot, item, type, index) {
-    // Clear previous content and listeners
-    slot.innerHTML = "";
-    slot.onclick = null;
-    slot.classList.remove("disabled");
-    // Remove potential old tooltip listeners by cloning (simplest way)
-    const clonedSlot = slot.cloneNode(true);
-    slot.parentNode.replaceChild(clonedSlot, slot);
-    slot = clonedSlot; // Use the clone for further operations
+    // --- Manage Listeners ---
+    // Remove existing tooltip listener if we stored one previously
+    if (slot._tooltipListener) {
+        slot.removeEventListener("mouseover", slot._tooltipListener);
+        slot._tooltipListener = null; // Clear the stored listener reference
+    }
 
+    // --- Clear Content & Reset ---
+    slot.innerHTML = ""; // Clear content
+    slot.onclick = null; // Clear click listener
+    slot.classList.remove("disabled"); // Reset disabled state
+
+    // --- Render Item ---
     if (item) {
         slot.textContent = `${item.name} ($${item.cost})`;
         let tooltipText = `<strong>${item.name}</strong>\n${item.description}`;
         let canBuy = true;
 
         // Specific checks based on type
-        if (type === "joker" && state.activeJokers.length >= MAX_JOKERS) {
+        console.log(state.activeJokers);
+        if (type === "joker" && !canBuyJoker()) {
             tooltipText += "\n\n<em>Cannot buy: Joker slots full</em>";
             canBuy = false;
         }
@@ -108,10 +116,14 @@ function renderShopSlot(slot, item, type, index) {
             tooltipText += "\n\n<em>Click to buy</em>";
         }
 
-        // Add tooltip listener
-        slot.addEventListener("mouseover", (event) => {
+        // Define the new listener function
+        const tooltipListener = (event) => {
             showTooltip(tooltipText, event, slot);
-        });
+        };
+
+        // Add new tooltip listener and store a reference to it on the element
+        slot.addEventListener("mouseover", tooltipListener);
+        slot._tooltipListener = tooltipListener;
 
         if (canBuy) {
             slot.onclick = () => buyItem(item, type, index, slot);
@@ -196,7 +208,7 @@ function updateRerollButtonState() {
  * @param {number} shopIndex - The index of the item in its shop category (for removal).
  * @param {HTMLElement} slotElement - The DOM element of the shop slot clicked.
  */
-export function buyItem(item, type, shopIndex, slotElement) {
+export async function buyItem(item, type, shopIndex, slotElement) { // Make async
     if (state.isAnimating) return; // Prevent buying during animations
     if (!item || state.playerMoney < item.cost) {
         console.log("Cannot buy item - insufficient funds or invalid item.");
@@ -208,7 +220,7 @@ export function buyItem(item, type, shopIndex, slotElement) {
 
     // --- Handle Purchase based on Type ---
     if (type === "joker") {
-        if (state.activeJokers.length >= MAX_JOKERS) {
+        if (!canBuyJoker()) {
             console.log("Cannot buy Joker - maximum Jokers reached.");
             alert("You have too many Jokers!");
             setPlayerMoney(state.playerMoney + item.cost); // Refund
@@ -222,8 +234,29 @@ export function buyItem(item, type, shopIndex, slotElement) {
             jokerInstance.currentValue = 0; // Start scaling from 0
             console.log(`Initialized scaling value for ${jokerInstance.name}`);
         }
-        const newJokers = [...state.activeJokers, jokerInstance];
-        setActiveJokers(newJokers);
+        let activeJokers = [...state.activeJokers];
+        let added = false;
+        for (let i = 0; i < activeJokers.length; i++) {
+            if (activeJokers[i] === null) {
+                activeJokers[i] = jokerInstance; // Fill the first empty slot
+                added = true;
+                break;
+            }
+        }
+
+        if (!added && activeJokers.length < MAX_JOKERS) {
+            activeJokers.push(jokerInstance); // Add to the end if no empty slots and space available
+            added = true;
+        }
+
+        if (!added) {
+             console.error("Failed to add joker even though canBuyJoker passed?");
+             setPlayerMoney(state.playerMoney + item.cost); // Refund
+             return;
+        }
+
+
+        setActiveJokers(activeJokers); // Update state with new joker
         renderJokers(); // Update joker display
         // Remove from shop state
         const newShopItems = { ...state.shopItems };
@@ -236,6 +269,21 @@ export function buyItem(item, type, shopIndex, slotElement) {
         newShopItems.packs[shopIndex] = null;
         setShopItems(newShopItems);
 
+        // --- NEW Pack Opening Logic ---
+        try {
+            await showPackOpeningScreen(item); // Call the new UI function and wait for it
+            console.log(`Finished opening ${item.name}`);
+            // UI function should handle adding items/effects directly to state
+        } catch (error) {
+            console.error(`Error during pack opening UI for ${item.name}:`, error);
+            // Handle potential errors or cancellations from the UI screen if necessary
+            // Maybe refund the cost if the opening was cancelled? Depends on design.
+            // For now, just log the error.
+        }
+        // --- End NEW Pack Opening Logic ---
+
+        // --- OLD Logic (to be removed/replaced by showPackOpeningScreen implementation) ---
+        /*
         let alertMessage = `Opened ${item.name} and found: `;
 
         // Handle different pack types
@@ -302,6 +350,8 @@ export function buyItem(item, type, shopIndex, slotElement) {
             }
             alert(alertMessage);
         }
+        */
+        // --- End OLD Logic ---
 
     } else if (type === "voucher") {
         if (state.purchasedVouchers.includes(item.id)) {
@@ -328,6 +378,12 @@ export function buyItem(item, type, shopIndex, slotElement) {
     slotElement.textContent = "[Purchased]";
     slotElement.classList.add("disabled");
     slotElement.onclick = null;
+    // Remove tooltip listener if it exists
+    if (slotElement._tooltipListener) {
+        slotElement.removeEventListener("mouseover", slotElement._tooltipListener);
+        slotElement._tooltipListener = null;
+    }
+
 
     // Update money display in both gameplay and shop
     dom.playerMoneyEl.textContent = state.playerMoney;
@@ -345,23 +401,49 @@ export function buyItem(item, type, shopIndex, slotElement) {
 /**
  * Sells an active joker at the specified index.
  * @param {number} index - The index of the joker in the activeJokers array.
+ * @param {boolean} [calledFromPackOpening=false] - Flag to indicate if called from pack opening UI.
+ * @returns {boolean} True if joker was sold successfully, false otherwise.
  */
-export function sellJoker(index) {
-    if (state.isAnimating) return; // Prevent selling during animations
-    if (index >= 0 && index < state.activeJokers.length) {
+export function sellJoker(index, calledFromPackOpening = false) {
+    if (state.isAnimating && !calledFromPackOpening) return false; // Allow selling during pack opening UI
+    if (index >= 0 && index < state.activeJokers.length && state.activeJokers[index]) {
         const currentJokers = [...state.activeJokers];
         const jokerToSell = currentJokers[index];
-        currentJokers.splice(index, 1); // Remove joker from array
+
+        // Replace the joker with null instead of splicing if called from pack opening,
+        // to maintain indices for potential subsequent sales within the same UI interaction.
+        // If not from pack opening, splice as before.
+        if (calledFromPackOpening) {
+            currentJokers[index] = null;
+        } else {
+            currentJokers.splice(index, 1);
+             // Ensure array length is maintained if not called from pack opening
+             while (currentJokers.length < MAX_JOKERS) {
+                currentJokers.push(null);
+            }
+        }
+
 
         setActiveJokers(currentJokers); // Update state
         setPlayerMoney(state.playerMoney + JOKER_SELL_PRICE); // Add sell price
 
         console.log(`Sold ${jokerToSell.name} for $${JOKER_SELL_PRICE}`);
-        renderJokers(); // Update joker display
-        updateUI(); // Update money display
-        populateShop(); // Re-evaluate shop item availability (joker slot might open up)
+
+        // Only update UI fully if not called from pack opening UI
+        // The pack opening UI will handle its own refresh
+        if (!calledFromPackOpening) {
+            renderJokers(); // Update joker display
+            updateUI(); // Update money display etc.
+            updateShopAvailability(); // Re-evaluate shop item availability (joker slot might open up)
+        } else {
+             // Just update money display in the main UI if sold from pack opening
+             dom.playerMoneyEl.textContent = state.playerMoney;
+             dom.shopPlayerMoneyEl.textContent = state.playerMoney; // Also update shop money display
+        }
+        return true; // Indicate success
     } else {
-        console.error("Invalid index for selling joker:", index);
+        console.error("Invalid index or empty slot for selling joker:", index);
+        return false; // Indicate failure
     }
 }
 

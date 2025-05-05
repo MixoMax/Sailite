@@ -15,6 +15,10 @@ const MAX_CONSUMABLES = 2;
 const JOKER_SELL_PRICE = 1; // Amount gained for selling a joker
 const ANIMATION_DURATION = 500; // ms for standard animations (shake, draw)
 const DISCARD_ANIMATION_DURATION = 400; // ms for discard animation
+const INTEREST_RATE = 0.05; // 5% interest rate for money in bank
+const INTEREST_CAP = 100; // Maximum interest cap
+const HAND_MONEY_BONUS = 2; // Amount of money gained for each hand played
+const HAND_MONEY_BONUS_MAX = 10; // Maximum amount of money gained for each hand played
 
 // Probabilities for Standard Pack
 const PROB_EDITION_FOIL = 0.10; // 10%
@@ -118,5 +122,5 @@ export {
     SUITS, RANKS, RANK_ORDER, BASE_HAND_SIZE, BASE_HANDS, BASE_DISCARDS, MAX_SELECT, MAX_JOKERS, MAX_CONSUMABLES,
     JOKER_SELL_PRICE, ANIMATION_DURATION, DISCARD_ANIMATION_DURATION, INTEREST_RATE, INTEREST_CAP, HAND_MONEY_BONUS,
     PROB_EDITION_FOIL, PROB_EDITION_HOLO, PROB_EDITION_POLY, PROB_SEAL_ANY, SEALS, PROB_BUFFOON_PACK,
-    BASE_HAND_SCORES, JOKER_POOL, PLANET_CARDS, TAROT_POOL, VOUCHER_POOL, PACKS, BOSS_BLINDS, RANKS_TO_HUMAN
+    BASE_HAND_SCORES, JOKER_POOL, PLANET_CARDS, TAROT_POOL, VOUCHER_POOL, PACKS, BOSS_BLINDS, RANKS_TO_HUMAN,
 };

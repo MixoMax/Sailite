@@ -134,3 +134,4 @@ export function setCurrentRound(newValue) { state.currentRound = newValue; }
 export function setRerollCost(newValue) { state.rerollCost = newValue; }
 export function setHandLevels(newLevels) { state.handLevels = newLevels; }
 export function incrementHandLevel(handKey) { if (state.handLevels.hasOwnProperty(handKey)) { state.handLevels[handKey]++; } }
+

@@ -312,6 +312,7 @@ export async function calculateScore(playedCards, handInfo) {
     // --- Final Calculation ---
     const finalMult = additiveMult * multiplicativeMult;
     const totalScore = Math.floor(effectiveChips * finalMult); // Use floor for integer score
+    //! Add 1000 for debugging
 
     console.log(` - Final Calculation: ${effectiveChips} Chips * ${finalMult.toFixed(2)} Mult = ${totalScore} Score`);
 
